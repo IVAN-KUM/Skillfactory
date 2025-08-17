@@ -1,0 +1,75 @@
+import json
+from datetime import datetime
+
+def is_july(record_date):
+    # Поддержка форматов даты: 'YYYY-MM-DD', 'DD.MM.YYYY', 'YYYY/MM/DD'
+    if isinstance(record_date, str):
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"):
+            try:
+                d = datetime.strptime(record_date, fmt)
+                return d.month == 7
+            except ValueError:
+                continue
+    elif isinstance(record_date, (int, float)):
+        # Если месяц хранится числом
+        return int(record_date) == 7
+    return False
+
+with open("orders.json", "r", encoding="utf-8") as f:
+    orders = json.load(f)  # ожидается словарь {order_id: { ... }}
+
+july_orders = []
+for order_id, data in orders.items():
+    # Попытки найти какую-то дату/месяц в возможных полях
+    date_value = data.get("date") or data.get("created_at") or data.get("order_date") or data.get("month")
+    if not is_july(date_value):
+        continue
+    july_orders.append((order_id, data))
+
+# 1) Количество заказов за июль
+orders_count_july = len(july_orders)
+
+# 2) Пользователь с наибольшей суммарной стоимостью заказов за июль
+sum_by_user = {}
+for _, data in july_orders:
+    user = data.get("user") or data.get("user_id") or data.get("customer") or "unknown_user"
+    price = float(data.get("price", 0))
+    sum_by_user[user] = sum_by_user.get(user, 0) + price
+
+top_user = None
+top_user_sum = 0.0
+for user, total in sum_by_user.items():
+    if total > top_user_sum:
+        top_user = user
+        top_user_sum = total
+
+# 3) Средняя стоимость заказа в июле (avg_order_price)
+avg_order_price = 0.0
+if orders_count_july > 0:
+    total_orders_sum = sum(float(data.get("price", 0)) for _, data in july_orders)
+    avg_order_price = total_orders_sum / orders_count_july
+
+# 4) Средняя стоимость товаров в июле (avg_item_price)
+total_items_sum = 0.0
+total_items_qty = 0
+
+for _, data in july_orders:
+    items = data.get("items") or []
+    # Если price на уровне заказа есть, но нет разбиения по товарам, используем цену заказа и количество товаров = len(items) или 1
+    if items:
+        for item in items:
+            item_price = float(item.get("price", 0))
+            qty = int(item.get("qty", item.get("quantity", 1)))
+            total_items_sum += item_price * qty
+            total_items_qty += qty
+    else:
+        # fallback: считаем весь заказ как один товар
+        total_items_sum += float(data.get("price", 0))
+        total_items_qty += 1
+
+avg_item_price = total_items_sum / total_items_qty if total_items_qty > 0 else 0.0
+
+print(f"Количество заказов за июль: {orders_count_july}")
+print(f"Пользователь с максимальной суммой заказов за июль: {top_user} (на сумму {top_user_sum:.2f})")
+print(f"Средняя стоимость заказа в июле: {avg_order_price:.2f}")
+print(f"Средняя стоимость товаров в июле: {avg_item_price:.2f}")
